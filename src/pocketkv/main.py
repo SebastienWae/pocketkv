@@ -1,8 +1,8 @@
 import asyncio
-from typing import Any, Optional
+from typing import Any, no_type_check
 import sys
 
-from loguru import logger
+from loguru import Record, logger
 
 HOST = "localhost"
 PORT = 6379
@@ -10,14 +10,14 @@ PORT = 6379
 connections = 0
 
 
-def _patcher_fn(record):
+def _patcher_fn(record: Record):
     if record["extra"].get("connection_id") is not None:
         record.update(
             message=f"[{record['extra']['connection_id']}] {record['message']}"
         )
 
 
-logger.configure(
+_ = logger.configure(
     extra={"connection_id": None},
     patcher=_patcher_fn,
     handlers=[
@@ -29,7 +29,8 @@ logger.configure(
 )
 
 
-def fmt_addr(addr: Optional[Any]) -> Optional[str]:
+@no_type_check
+def fmt_addr(addr: Any) -> str | None:
     if addr is None:
         return None
     if isinstance(addr, tuple):
@@ -47,18 +48,8 @@ def fmt_addr(addr: Optional[Any]) -> Optional[str]:
 
 def get_connection_info(writer: asyncio.StreamWriter) -> tuple[str, str]:
     gi = writer.get_extra_info
-    server = fmt_addr(gi("sockname")) or "unknown-local"
-    client = fmt_addr(gi("peername")) or "unknown-peer"
-
-    # TODO: add tls info
-    # tls = ""
-    # if gi("ssl_object"):
-    #     cipher = gi("cipher")
-    #     if cipher:
-    #         name, proto, bits = cipher
-    #         tls = f" [TLS {proto} {name}/{bits}b]"
-    #     else:
-    #         tls = " [TLS]"
+    server = fmt_addr(gi("sockname")) or "unknown-local"  # pyright: ignore[reportAny]
+    client = fmt_addr(gi("peername")) or "unknown-peer"  # pyright: ignore[reportAny]
 
     return server, client
 
@@ -100,7 +91,7 @@ async def create_server():
         server = await asyncio.start_server(handle_client, HOST, PORT)
         for s in server.sockets:
             logger.info(
-                f"creating server TCP listening socket {fmt_addr(s.getsockname())}"
+                f"creating server TCP listening socket {fmt_addr(s.getsockname())}"  # pyright: ignore[reportAny]
             )
         async with server:
             await server.serve_forever()
@@ -112,6 +103,5 @@ def main():
     try:
         asyncio.run(create_server())
     except KeyboardInterrupt:  # graceful Ctrl+C
-        print("")  # add a new line after ^C
         logger.info("shutting down server")
         raise SystemExit(130)
